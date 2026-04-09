@@ -1,72 +1,58 @@
 // prisma/seed.ts
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
+import { CrosswordGenerator } from '../src/core/use-cases/crosswordGenerator';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Seeding database...');
 
-  // Create Super Admin
-  const superAdminExists = await prisma.user.findUnique({ where: { email: 'superadmin@cw.live' } });
-  if (!superAdminExists) {
-    const superAdmin = await prisma.user.create({
-      data: {
-        email: 'superadmin@cw.live',
-        name: 'Super Admin',
-        password: await bcrypt.hash('superadmin123', 12),
-        role: 'SUPER_ADMIN',
-      },
-    });
-    console.log('✅ Super Admin created:', superAdmin.email);
-  } else {
-    console.log('⏭️  Super Admin already exists');
-  }
+  const entries = [
+    { word: 'BANDUNG', question: 'Ibukota Jawa Barat', hint: 'Kota kembang', basePoints: 100, timeLimit: 30 },
+    { word: 'ANGKLUNG', question: 'Alat musik bambu khas Jawa Barat', hint: 'UNESCO heritage', basePoints: 150, timeLimit: 30 },
+    { word: 'SUNDA', question: 'Suku bangsa mayoritas di Jawa Barat', basePoints: 100, timeLimit: 25 },
+    { word: 'GEDUNG', question: 'Bangunan tempat bekerja atau berkumpul', basePoints: 80, timeLimit: 20 },
+    { word: 'BUNGA', question: 'Simbol kecantikan yang tumbuh di taman', basePoints: 80, timeLimit: 20 },
+  ];
 
-  // Create Admin
-  const adminExists = await prisma.user.findUnique({ where: { email: 'admin@cw.live' } });
-  const admin = adminExists || await prisma.user.create({
-    data: {
-      email: 'admin@cw.live',
-      name: 'Admin Demo',
-      password: await bcrypt.hash('admin123', 12),
-      role: 'ADMIN',
+  const generator = new CrosswordGenerator();
+  const result = generator.generate(entries);
+
+  await prisma.room.upsert({
+    where: { code: 'BDG001' },
+    update: {},
+    create: {
+      code: 'BDG001',
+      name: 'Teka-Teki Bandung',
+      hostName: 'Rafli',
+      capacity: 65,
+      config: {
+        timePerQuestion: 30,
+        basePoints: 100,
+        timeMultiplier: 3,
+        showLeaderboardAfterEach: true,
+        allowHints: false,
+      },
+      puzzles: {
+        create: result.placements.map((p) => ({
+          question: p.question,
+          answer: p.word,
+          hint: p.hint,
+          clueNumber: p.clueNumber,
+          orientation: p.orientation,
+          row: p.row,
+          col: p.col,
+          length: p.length,
+          basePoints: p.basePoints,
+          timeLimit: p.timeLimit,
+        })),
+      },
     },
   });
-  if (!adminExists) console.log('✅ Admin created:', admin.email);
-  else console.log('⏭️  Admin already exists');
 
-  // Create demo room
-  const roomExists = await prisma.room.findFirst({ where: { adminId: admin.id } });
-  if (!roomExists) {
-    const room = await prisma.room.create({
-      data: {
-        name: 'Demo Room - Geografi',
-        code: 'DEMO01',
-        capacity: 30,
-        adminId: admin.id,
-      },
-    });
-    console.log('✅ Demo room created:', room.code);
-
-    // Create default global settings
-    await prisma.globalSettings.createMany({
-      data: [
-        { key: 'defaultDuration', value: 60, description: 'Durasi countdown default (detik)' },
-        { key: 'basePoints', value: 100, description: 'Poin dasar per jawaban benar' },
-        { key: 'speedBonus', value: 50, description: 'Bonus kecepatan maksimal' },
-      ],
-      skipDuplicates: true,
-    });
-  }
-
-  console.log('\n🎯 Seeding selesai!');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('Super Admin: superadmin@cw.live / superadmin123');
-  console.log('Admin:       admin@cw.live / admin123');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('✅ Seed complete! Room code: BDG001');
 }
 
 main()
   .catch(console.error)
-  .finally(async () => await prisma.$disconnect());
+  .finally(() => prisma.$disconnect());

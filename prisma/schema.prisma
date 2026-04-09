@@ -1,127 +1,98 @@
 // prisma/schema.prisma
-generator client {
-  provider = "prisma-client-js"
-}
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String?  @unique
-  name      String
-  password  String?
-  role      Role     @default(PLAYER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  adminRooms Room[]   @relation("RoomAdmin")
-  players    Player[]
+generator client {
+  provider = "prisma-client-js"
 }
 
 model Room {
   id          String   @id @default(cuid())
   code        String   @unique
   name        String
-  capacity    Int      @default(10)
-  adminId     String
-  admin       User     @relation("RoomAdmin", fields: [adminId], references: [id])
+  hostName    String
+  capacity    Int      @default(65)
   status      RoomStatus @default(WAITING)
-  settings    Json     @default("{}")
+  config      Json?
+  currentPuzzleId String?  @unique
+  currentPuzzle   Puzzle?  @relation("RoomCurrentPuzzle", fields: [currentPuzzleId], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  puzzles     Puzzle[]
   players     Player[]
-}
+  puzzles     Puzzle[]
 
-model Puzzle {
-  id          String   @id @default(cuid())
-  roomId      String
-  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  title       String   @default("Puzzle")
-  layout      Json     // grid cells: { rows, cols, cells: [{row,col,letter,number,isBlack}] }
-  clues       Json     // { across: [{number,clue,answer,startRow,startCol,length}], down: [...] }
-  wordCount   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  gameSessions GameSession[]
-}
-
-model GameSession {
-  id          String        @id @default(cuid())
-  puzzleId    String
-  puzzle      Puzzle        @relation(fields: [puzzleId], references: [id], onDelete: Cascade)
-  clueIndex   Int           @default(0)    // index into clues array (across/down combined)
-  direction   String        @default("across") // "across" | "down"
-  startTime   DateTime?
-  endTime     DateTime?
-  duration    Int           @default(60)   // seconds for countdown
-  status      SessionStatus @default(PENDING)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-
-  submissions Submission[]
+  @@index([code])
+  @@index([status])
 }
 
 model Player {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  roomId      String
-  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  displayName String
-  totalPoints Int      @default(0)
-  isOnline    Boolean  @default(true)
-  joinedAt    DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  avatar    String?   // emoji avatar
+  socketId  String?
+  points    Int      @default(0)
+  rank      Int?
+  isActive  Boolean  @default(true)
+  joinedAt  DateTime @default(now())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  answers   Answer[]
 
-  submissions Submission[]
-
-  @@unique([userId, roomId])
+  @@index([roomId])
+  @@index([points])
 }
 
-model Submission {
+model Puzzle {
   id          String      @id @default(cuid())
-  sessionId   String
-  session     GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  playerId    String
-  player      Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  question    String
   answer      String
-  submittedAt DateTime    @default(now())
-  isCorrect   Boolean?
-  points      Int?
-  rank        Int?        // speed rank among correct answers
+  hint        String?
+  clueNumber  Int
+  orientation Orientation
+  row         Int
+  col         Int
+  length      Int
+  isOpened    Boolean     @default(false)
+  isRevealed  Boolean     @default(false)
+  openedAt    DateTime?
+  timeLimit   Int         @default(30)  // seconds
+  basePoints  Int         @default(100)
+  roomId      String
+  room        Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  answers     Answer[]
+  currentRoom Room?       @relation("RoomCurrentPuzzle")
 
-  @@unique([sessionId, playerId])
+  @@index([roomId])
+  @@index([clueNumber])
 }
 
-model GlobalSettings {
-  id            String   @id @default(cuid())
-  key           String   @unique
-  value         Json
-  description   String?
-  updatedAt     DateTime @updatedAt
-}
+model Answer {
+  id          String   @id @default(cuid())
+  content     String
+  isCorrect   Boolean  @default(false)
+  points      Int      @default(0)
+  timeBonus   Int      @default(0)
+  submittedAt DateTime @default(now())
+  playerId    String
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  puzzleId    String
+  puzzle      Puzzle   @relation(fields: [puzzleId], references: [id], onDelete: Cascade)
 
-enum Role {
-  SUPER_ADMIN
-  ADMIN
-  PLAYER
+  @@unique([playerId, puzzleId])
+  @@index([puzzleId])
+  @@index([playerId])
 }
 
 enum RoomStatus {
   WAITING
-  ACTIVE
+  PLAYING
   FINISHED
 }
 
-enum SessionStatus {
-  PENDING
-  ACTIVE
-  CLOSED
-  VALIDATED
+enum Orientation {
+  ACROSS
+  DOWN
 }

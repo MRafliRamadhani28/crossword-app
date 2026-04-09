@@ -1,11 +1,12 @@
-// next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  // Required: disable default server for Socket.io compatibility
-  // We use a custom server (server.js)
+  serverExternalPackages: ['@prisma/client', 'prisma', 'ioredis', '@socket.io/redis-adapter'],
+  turbopack: {},
   webpack: (config) => {
-    config.externals = [...(config.externals || [])];
+    config.externals.push({
+      'utf-8-validate': 'commonjs utf-8-validate',
+      bufferutil: 'commonjs bufferutil',
+    });
     return config;
   },
 };
